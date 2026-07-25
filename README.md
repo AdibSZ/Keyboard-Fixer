@@ -15,7 +15,7 @@
 
 ### روش اول: دانلود فایل آماده (برای کاربران عادی)
 
-به بخش [Releases](https://chat.z.ai/releases) بروید و آخرین نسخه `KeyboardFixer.exe` را دانلود و اجرا کنید.
+به بخش [Releases](https://github.com/AdibSZ/Keyboard-Fixer/releases) بروید و آخرین نسخه `KeyboardFixer.exe` را دانلود و اجرا کنید.
 
 ### روش دوم: اجرای سورس کد (برای توسعه‌دهندگان)
 
