@@ -53,7 +53,7 @@ python main.py
 
 ```bash
 pip install nuitka
-python -m nuitka --standalone --onefile --enable-plugin=customtkinter --windows-icon-from-ico=assets/program.ico --disable-console main.py
+python -m nuitka --standalone --onefile --enable-plugin=tk-inter --include-package-data=customtkinter --include-data-files=assets/program.ico=assets/program.ico --windows-icon-from-ico=assets/program.ico --windows-console-mode=disable main.py
 ```
 
 ## 📜 لایسنس
