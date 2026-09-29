@@ -1,4 +1,4 @@
-customtkinter>=5.2.0
+customtkinter>=6.0.0
 keyboard>=0.13.5
 pyperclip>=1.8.2
 pystray>=0.19.5
