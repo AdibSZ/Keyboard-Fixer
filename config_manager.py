@@ -8,7 +8,34 @@ import json
 import time
 import winreg
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+def get_config_path() -> str:
+    """Returns the persistent config file path in %APPDATA%\\KeyboardFixer."""
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        config_dir = os.path.join(appdata, "KeyboardFixer")
+    else:
+        config_dir = os.path.join(os.path.expanduser("~"), ".keyboard_fixer")
+    
+    os.makedirs(config_dir, exist_ok=True)
+    target = os.path.join(config_dir, "config.json")
+
+    # If the AppData config doesn't exist yet, migrate from local directory if present
+    if not os.path.exists(target):
+        candidates = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"),
+            os.path.join(os.path.dirname(sys.executable), "config.json")
+        ]
+        for c in candidates:
+            if os.path.exists(c) and os.path.abspath(c) != os.path.abspath(target):
+                try:
+                    import shutil
+                    shutil.copy2(c, target)
+                    break
+                except Exception:
+                    pass
+    return target
+
+CONFIG_FILE = get_config_path()
 REGISTRY_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APP_REGISTRY_NAME = "KeyboardFixer"
 
@@ -33,6 +60,11 @@ class ConfigManager:
         self.config_path = config_path
         self.config = DEFAULT_CONFIG.copy()
         self.load()
+        if self.config.get("start_with_windows", False):
+            try:
+                self.sync_autostart_registry(True)
+            except Exception:
+                pass
 
     def load(self):
         """Loads configuration from disk, creating default if missing."""
@@ -116,14 +148,14 @@ class ConfigManager:
 
             if enable:
                 if getattr(sys, 'frozen', False):
-                    cmd = f'"{sys.executable}"'
+                    cmd = f'"{sys.executable}" --silent'
                 else:
                     python_exe = sys.executable
                     pythonw_exe = os.path.join(os.path.dirname(python_exe), "pythonw.exe")
                     if not os.path.exists(pythonw_exe):
                         pythonw_exe = python_exe
                     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main.py")
-                    cmd = f'"{pythonw_exe}" "{script_path}"'
+                    cmd = f'"{pythonw_exe}" "{script_path}" --silent'
 
                 winreg.SetValueEx(key, APP_REGISTRY_NAME, 0, winreg.REG_SZ, cmd)
                 print(f"[Config] Autostart enabled in registry: {cmd}")

@@ -194,10 +194,8 @@ def main():
             pass
         sys.exit(0)
 
-    show_ui = True if ("--settings" in sys.argv or "--show" in sys.argv) else False
-    
-    if not os.path.exists("config.json"):
-        show_ui = True
+    is_silent = any(arg in sys.argv for arg in ("--silent", "--autostart", "--minimized", "-s"))
+    show_ui = not is_silent
 
     app = KeyboardFixerApp(show_ui_on_start=show_ui)
     app.run()

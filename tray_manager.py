@@ -3,12 +3,14 @@ System tray manager for Keyboard Fixer.
 Handles the system tray icon, context menu, and background lifecycle using pystray.
 """
 import os
+import sys
 import threading
 from PIL import Image
 import pystray
 from pystray import MenuItem as item
 
-ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.png")
+BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+ICON_PATH = os.path.join(BASE_DIR, "assets", "icon.png")
 
 class TrayManager:
     def __init__(self, on_show_settings, on_toggle_active, on_convert_now, on_exit):

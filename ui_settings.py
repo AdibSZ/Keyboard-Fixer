@@ -33,7 +33,8 @@ from keyboard_engine import (
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 ICON_ICO = os.path.join(ASSETS_DIR, "icon.ico")
 ICON_PNG = os.path.join(ASSETS_DIR, "icon.png")
 
