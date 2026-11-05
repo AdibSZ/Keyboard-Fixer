@@ -180,25 +180,49 @@ def ensure_single_instance():
 
 
 def main():
-    mutex = ensure_single_instance()
-    if not mutex:
-        print("[App] Keyboard Fixer is already running in background/tray.")
-        try:
-            ctypes.windll.user32.MessageBoxW(
-                0,
-                "Keyboard Fixer is already running in the background (System Tray near clock).\nClick the tray icon to open Settings.",
-                "Keyboard Fixer Pro",
-                0x00000040  # MB_ICONINFORMATION
-            )
-        except Exception:
-            pass
-        sys.exit(0)
+    # 1. Ensure working directory is set to application directory
+    app_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
+    try:
+        os.chdir(app_dir)
+    except Exception:
+        pass
 
     is_silent = any(arg in sys.argv for arg in ("--silent", "--autostart", "--minimized", "-s"))
+
+    # 2. Prevent duplicate instances
+    mutex = ensure_single_instance()
+    if not mutex:
+        if not is_silent:
+            print("[App] Keyboard Fixer is already running in background/tray.")
+            try:
+                ctypes.windll.user32.MessageBoxW(
+                    0,
+                    "Keyboard Fixer is already running in the background (System Tray near clock).\nClick the tray icon to open Settings.",
+                    "Keyboard Fixer Pro",
+                    0x00000040  # MB_ICONINFORMATION
+                )
+            except Exception:
+                pass
+        sys.exit(0)
+
+    # 3. Allow Windows taskbar/tray to settle on boot before creating tray icon
+    if is_silent:
+        time.sleep(1.2)
+
     show_ui = not is_silent
 
-    app = KeyboardFixerApp(show_ui_on_start=show_ui)
-    app.run()
+    try:
+        app = KeyboardFixerApp(show_ui_on_start=show_ui)
+        app.run()
+    except Exception as e:
+        try:
+            log_dir = os.path.join(os.environ.get("APPDATA", ""), "KeyboardFixer")
+            os.makedirs(log_dir, exist_ok=True)
+            with open(os.path.join(log_dir, "crash.log"), "a", encoding="utf-8") as f:
+                f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Startup Crash: {e}\n")
+        except Exception:
+            pass
+        raise
 
 
 if __name__ == "__main__":

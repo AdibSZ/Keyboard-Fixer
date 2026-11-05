@@ -45,10 +45,18 @@ def build():
     res = subprocess.run(cmd)
     if res.returncode == 0:
         exe_path = os.path.abspath(os.path.join("dist", "KeyboardFixer.exe"))
+        # Also copy to root directory for easy access
+        root_exe = os.path.abspath("KeyboardFixer.exe")
+        try:
+            shutil.copy2(exe_path, root_exe)
+        except Exception as e:
+            print(f"[Warning] Could not copy to root: {e}")
+
         size_mb = os.path.getsize(exe_path) / (1024 * 1024)
         print("=" * 60)
         print("[SUCCESS] KeyboardFixer.exe has been created successfully!")
         print(f"Location: {exe_path}")
+        print(f"Root Copy: {root_exe}")
         print(f"File Size: {size_mb:.1f} MB")
         print("=" * 60)
         return True

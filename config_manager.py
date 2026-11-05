@@ -136,9 +136,82 @@ class ConfigManager:
         self.config["preset"] = preset
         self.save()
 
-    def sync_autostart_registry(self, enable: bool):
-        """Registers or unregisters the app in Windows startup registry."""
+    def get_executable_command(self) -> tuple[str, str]:
+        """Returns (cmd_str, exe_path) suitable for autostart."""
+        if getattr(sys, 'frozen', False):
+            exe_path = sys.executable
+            cmd = f'"{exe_path}" --silent'
+            return cmd, exe_path
+
+        # If running from source, check if compiled KeyboardFixer.exe exists in project folder
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        compiled_exe = os.path.join(script_dir, "KeyboardFixer.exe")
+        if os.path.exists(compiled_exe):
+            cmd = f'"{compiled_exe}" --silent'
+            return cmd, compiled_exe
+
+        # Fallback to pythonw.exe main.py
+        python_exe = sys.executable
+        pythonw_exe = os.path.join(os.path.dirname(python_exe), "pythonw.exe")
+        if not os.path.exists(pythonw_exe):
+            pythonw_exe = python_exe
+        script_path = os.path.join(script_dir, "main.py")
+        cmd = f'"{pythonw_exe}" "{script_path}" --silent'
+        return cmd, pythonw_exe
+
+    def _create_startup_shortcut(self, exe_path: str):
+        startup_dir = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup")
+        if not os.path.isdir(startup_dir):
+            return
+        lnk_path = os.path.join(startup_dir, "KeyboardFixer.lnk")
+        work_dir = os.path.dirname(os.path.abspath(exe_path))
+
         try:
+            import win32com.client
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(lnk_path)
+            shortcut.TargetPath = exe_path
+            shortcut.Arguments = "--silent"
+            shortcut.WorkingDirectory = work_dir
+            shortcut.Save()
+            print(f"[Config] Startup shortcut created: {lnk_path}")
+            return
+        except Exception:
+            pass
+
+        try:
+            ps_cmd = (
+                f"$ws = New-Object -ComObject WScript.Shell; "
+                f"$s = $ws.CreateShortcut('{lnk_path}'); "
+                f"$s.TargetPath = '{exe_path}'; "
+                f"$s.Arguments = '--silent'; "
+                f"$s.WorkingDirectory = '{work_dir}'; "
+                f"$s.Save()"
+            )
+            import subprocess
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+                check=False
+            )
+            print(f"[Config] Startup shortcut created via PowerShell: {lnk_path}")
+        except Exception as e:
+            print(f"[Config] Failed to create startup shortcut: {e}")
+
+    def _remove_startup_shortcut(self):
+        startup_dir = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup")
+        lnk_path = os.path.join(startup_dir, "KeyboardFixer.lnk")
+        if os.path.exists(lnk_path):
+            try:
+                os.remove(lnk_path)
+                print(f"[Config] Startup shortcut removed: {lnk_path}")
+            except Exception:
+                pass
+
+    def sync_autostart_registry(self, enable: bool):
+        """Registers or unregisters the app in Windows startup registry and Startup folder."""
+        try:
+            # 1. Update Windows Run Key
             key = winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
                 REGISTRY_RUN_KEY,
@@ -147,16 +220,7 @@ class ConfigManager:
             )
 
             if enable:
-                if getattr(sys, 'frozen', False):
-                    cmd = f'"{sys.executable}" --silent'
-                else:
-                    python_exe = sys.executable
-                    pythonw_exe = os.path.join(os.path.dirname(python_exe), "pythonw.exe")
-                    if not os.path.exists(pythonw_exe):
-                        pythonw_exe = python_exe
-                    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main.py")
-                    cmd = f'"{pythonw_exe}" "{script_path}" --silent'
-
+                cmd, exe_path = self.get_executable_command()
                 winreg.SetValueEx(key, APP_REGISTRY_NAME, 0, winreg.REG_SZ, cmd)
                 print(f"[Config] Autostart enabled in registry: {cmd}")
             else:
@@ -167,6 +231,46 @@ class ConfigManager:
                     pass
 
             winreg.CloseKey(key)
+
+            # 2. Windows StartupApproved Key (Ensure Windows / Task Manager doesn't block it)
+            try:
+                approved_key = winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run",
+                    0,
+                    winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE
+                )
+                if enable:
+                    # 0x02 = Enabled in Windows StartupApproved (12 bytes)
+                    winreg.SetValueEx(
+                        approved_key,
+                        APP_REGISTRY_NAME,
+                        0,
+                        winreg.REG_BINARY,
+                        b'\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                    )
+                else:
+                    winreg.SetValueEx(
+                        approved_key,
+                        APP_REGISTRY_NAME,
+                        0,
+                        winreg.REG_BINARY,
+                        b'\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                    )
+                winreg.CloseKey(approved_key)
+            except Exception as e:
+                print(f"[Config] StartupApproved registry sync note: {e}")
+
+            # 3. Windows Startup Folder Shortcut (Guarantees autostart even if Run key is restricted)
+            try:
+                if enable:
+                    _, exe_path = self.get_executable_command()
+                    self._create_startup_shortcut(exe_path)
+                else:
+                    self._remove_startup_shortcut()
+            except Exception as e:
+                print(f"[Config] Startup folder shortcut sync note: {e}")
+
             self.set("start_with_windows", enable)
             return True
         except Exception as e:
@@ -174,12 +278,34 @@ class ConfigManager:
             return False
 
     def is_autostart_in_registry(self) -> bool:
-        """Checks if app is currently registered in Windows Run registry."""
+        """Checks if app is registered for autostart via registry or startup folder."""
+        startup_dir = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup")
+        lnk_path = os.path.join(startup_dir, "KeyboardFixer.lnk")
+        if os.path.exists(lnk_path):
+            return True
+
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_RUN_KEY, 0, winreg.KEY_READ)
             try:
                 winreg.QueryValueEx(key, APP_REGISTRY_NAME)
                 winreg.CloseKey(key)
+
+                # Check if it was disabled in StartupApproved
+                try:
+                    app_key = winreg.OpenKey(
+                        winreg.HKEY_CURRENT_USER,
+                        r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run",
+                        0,
+                        winreg.KEY_READ
+                    )
+                    val, _ = winreg.QueryValueEx(app_key, APP_REGISTRY_NAME)
+                    winreg.CloseKey(app_key)
+                    if isinstance(val, (bytes, bytearray)) and len(val) > 0:
+                        if val[0] % 2 != 0:
+                            return False
+                except Exception:
+                    pass
+
                 return True
             except FileNotFoundError:
                 winreg.CloseKey(key)
